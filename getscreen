@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Capture screenshot from AMI MegaRAC BMC HTML5 KVM
+# Usage: getscreen <bmc-ip> [output.jpg]
+# Env: BMC_USER (required), BMC_PASS (required), BMC_DEBUG=1 (optional)
+set -euo pipefail
+
+if [[ $# -lt 1 ]]; then
+    echo "Usage: getscreen <bmc-ip> [output.jpg]" >&2
+    echo "  Env: BMC_USER, BMC_PASS (required)" >&2
+    exit 1
+fi
+
+HOST="$1"
+OUTPUT="${2:-/tmp/bmc-${HOST}.jpg}"
+
+if [[ -z "${BMC_USER:-}" || -z "${BMC_PASS:-}" ]]; then
+    echo "ERROR: BMC_USER and BMC_PASS environment variables must be set" >&2
+    exit 1
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SUPPRESS="${BMC_DEBUG:+/dev/stderr}"
+
+node "${SCRIPT_DIR}/kvm-capture.js" "$HOST" "$BMC_USER" "$BMC_PASS" "$OUTPUT" 2>"${SUPPRESS:-/dev/null}"
+EXIT=$?
+
+if [[ $EXIT -eq 0 && -s "$OUTPUT" ]]; then
+    echo "${OUTPUT}"
+else
+    echo "ERROR: Screenshot capture failed for ${HOST}" >&2
+    exit 1
+fi

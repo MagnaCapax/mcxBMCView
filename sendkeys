@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Send keyboard input to server via AMI MegaRAC BMC KVM
+# Usage: sendkeys <bmc-ip> <keys>
+# Env: BMC_USER (required), BMC_PASS (required), BMC_DEBUG=1 (optional)
+#
+# Key notation:
+#   Plain text: sendkeys 10.0.0.1 "root"
+#   Special keys: sendkeys 10.0.0.1 "{Enter}"
+#   Combos: sendkeys 10.0.0.1 "{Ctrl+Alt+Delete}"
+#   Mixed: sendkeys 10.0.0.1 "root{Enter}password{Enter}"
+#   Delay: sendkeys 10.0.0.1 "{Delay:2000}" (ms)
+set -euo pipefail
+
+if [[ $# -lt 2 ]]; then
+    echo "Usage: sendkeys <bmc-ip> <keys>" >&2
+    echo "  Keys: plain text + {Enter} {Tab} {Escape} {F1} {Ctrl+Alt+Delete} {Delay:ms}" >&2
+    exit 1
+fi
+
+HOST="$1"
+KEYS="$2"
+
+if [[ -z "${BMC_USER:-}" || -z "${BMC_PASS:-}" ]]; then
+    echo "ERROR: BMC_USER and BMC_PASS environment variables must be set" >&2
+    exit 1
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SUPPRESS="${BMC_DEBUG:+/dev/stderr}"
+
+node "${SCRIPT_DIR}/kvm-sendkeys.js" "$HOST" "$BMC_USER" "$BMC_PASS" "$KEYS" 2>"${SUPPRESS:-/dev/null}"

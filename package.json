@@ -1,0 +1,30 @@
+{
+  "name": "mcx-bmc-view",
+  "version": "1.0.0",
+  "description": "Capture screenshots and send keyboard input via AMI MegaRAC BMC HTML5 KVM",
+  "author": "Aleksi Ursin / MCX (with Väinämöinen)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/MagnaCapax/mcxBMCView.git"
+  },
+  "keywords": [
+    "bmc",
+    "ipmi",
+    "kvm",
+    "ami",
+    "megarac",
+    "screenshot",
+    "remote-management",
+    "server",
+    "automation",
+    "aspeed",
+    "asrock-rack"
+  ],
+  "dependencies": {
+    "playwright": "^1.50.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
