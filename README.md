@@ -216,4 +216,4 @@ No AMI, ASRock, ASPEED, or other vendor code is included. "MegaRAC" is a tradema
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Apache-2.0 — see [LICENSE](LICENSE).
