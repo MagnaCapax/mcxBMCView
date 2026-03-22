@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Reflash BIOS via AMI MegaRAC BMC web UI
+# Usage: flashbios <bmc-ip> <rom-file>
+# Env: BMC_USER (required), BMC_PASS (required), BMC_DEBUG=1 (optional)
+#      BMC_FLASH_MODE=immediate|next_boot|shutdown (default: immediate)
+#      BMC_SCREENSHOT=1 (save screenshots at each phase)
+#      BMC_TIMEOUT_S=900 (overall timeout in seconds)
+#
+# The BMC REST API does not support BIOS updates (error 1010 on fw <=1.80).
+# This tool drives the browser-based BIOS Update page via Playwright.
+# The BMC's ASPEED chip writes directly to the SPI flash — works even when
+# the host CPU is dead (no POST, no screen output).
+#
+# Exit: 0 = flash succeeded (prints BIOS_FLASH_OK to stdout)
+#       1 = failure (login, upload, flash error, or timeout)
+set -euo pipefail
+
+if [[ $# -lt 2 ]]; then
+    echo "Usage: flashbios <bmc-ip> <rom-file>" >&2
+    echo "  Env: BMC_USER, BMC_PASS (required)" >&2
+    echo "  Env: BMC_FLASH_MODE=immediate|next_boot|shutdown (default: immediate)" >&2
+    echo "  Env: BMC_SCREENSHOT=1, BMC_TIMEOUT_S=900 (optional)" >&2
+    exit 1
+fi
+
+HOST="$1"
+ROM="$2"
+
+if [[ -z "${BMC_USER:-}" || -z "${BMC_PASS:-}" ]]; then
+    echo "ERROR: BMC_USER and BMC_PASS environment variables must be set" >&2
+    exit 1
+fi
+
+if [[ ! -f "$ROM" ]]; then
+    echo "ERROR: ROM file not found: $ROM" >&2
+    exit 1
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SUPPRESS="${BMC_DEBUG:+/dev/stderr}"
+
+node "${SCRIPT_DIR}/bios-flash.js" "$HOST" "$BMC_USER" "$BMC_PASS" "$ROM" 2>"${SUPPRESS:-/dev/null}"

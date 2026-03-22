@@ -3,7 +3,7 @@
 > *"Wondrous things might be constructed from the relics of this monster."*
 > — Kalevala, Runo XL
 
-Deterministic screenshot capture and keyboard input for AMI MegaRAC BMC HTML5 KVM consoles. **Built for AI agent integration** and headless server management — no human browser needed.
+Deterministic screenshot capture, keyboard input, and **BIOS reflash** for AMI MegaRAC BMC HTML5 consoles. **Built for AI agent integration** and headless server management — no human browser needed.
 
 ## Why This Exists
 
@@ -13,8 +13,9 @@ mcxBMCView bridges that gap. It gives your automation **deterministic, scriptabl
 
 - **`getscreen`** — captures the server's physical display as a JPEG. Pipe it to your vision model. Exit code 0 = success, 1 = failure. Screenshot path on stdout.
 - **`sendkeys`** — types keyboard input into the server console. Login sequences, BIOS navigation, boot menu selections — anything a human would type.
+- **`flashbios`** — reflashes the BIOS via the BMC's SPI bus. Works even when the host CPU is completely dead — the ASPEED chip writes to the flash chip directly, independent of the host.
 
-Both tools authenticate, establish a KVM session, act, clean up, and exit. Fully stateless. One dependency: Playwright.
+All tools authenticate, act, clean up, and exit. Fully stateless. One dependency: Playwright.
 
 ## Agent Integration
 
@@ -134,6 +135,34 @@ BMC_DEBUG=1 ./getscreen 10.0.0.100   # progress on stderr
 ```
 
 Key notation: plain text typed as-is, `{Enter}` `{Tab}` `{Escape}` `{F1}`-`{F12}` for special keys, `{Ctrl+Alt+Delete}` for combos, `{Delay:ms}` for waits.
+
+### Reflash BIOS
+
+```bash
+./flashbios <bmc-ip> <rom-file>
+
+./flashbios 10.0.0.100 /path/to/BIOS.rom
+# Prints BIOS_FLASH_OK on success. Exit 0 = success, 1 = failure.
+
+BMC_DEBUG=1 ./flashbios 10.0.0.100 /path/to/BIOS.rom   # progress on stderr
+```
+
+The BMC REST API does not support BIOS updates (error 1010 on firmware <=1.80). This tool drives the browser-based BIOS Update page instead. The ASPEED BMC chip writes directly to the SPI flash chip on its own power domain — **this works even when the host CPU is completely dead** (no POST, no screen output).
+
+Environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BMC_FLASH_MODE` | `immediate` | `immediate` — flash now (use when CPU is dead); `next_boot` — flash after shutdown; `shutdown` — shutdown host then flash |
+| `BMC_SCREENSHOT` | off | Set to `1` to save screenshots at each phase |
+| `BMC_TIMEOUT_S` | `900` | Overall timeout in seconds |
+
+Key implementation details for anyone reading the source:
+- Route is `#maintenance/bios_update` (underscore) — `#maintenance/bios-update` (hyphen) silently loads an empty pane
+- Two file inputs exist: `#file_PublicKey` (hidden, wrong) and `#fileBIOS_image` (visible, correct)
+- Two confirmation dialogs are auto-accepted during the flash flow
+- `shutdwon_host_to_flash` — the typo in the radio button ID is real, present in the BMC firmware
+- Typical 32MB ROM flash takes ~2 minutes
 
 ## How It Works
 
