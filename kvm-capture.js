@@ -19,6 +19,7 @@ if (!/^[\w.\-:]+$/.test(host)) {
     process.exit(1);
 }
 
+const renderWait = parseInt(process.env.BMC_RENDER_WAIT || '5000', 10);
 const log = process.env.BMC_DEBUG ? (m => console.error(m)) : (() => {});
 const chromiumArgs = ['--ignore-certificate-errors'];
 if (process.getuid && process.getuid() === 0) chromiumArgs.push('--no-sandbox');
@@ -85,9 +86,47 @@ if (process.getuid && process.getuid() === 0) chromiumArgs.push('--no-sandbox');
             await viewer.waitForTimeout(1000);
         }
 
-        // Extra wait for video frames to render on canvas
-        if (kvmReady) await viewer.waitForTimeout(2000);
-        else log('KVM did not connect, screenshotting anyway');
+        // Wait for video frames to render on canvas.
+        // ASPEED BMC video encoders can take surprisingly long to deliver the first
+        // frame — especially after resolution changes (BIOS → OS boot → initramfs).
+        // A black screenshot does NOT mean the screen is black. Retry with patience.
+        if (kvmReady) {
+            log(`Waiting up to ${renderWait}ms for video frames (BMC_RENDER_WAIT)...`);
+            const pollInterval = 200;
+            const maxPolls = Math.ceil(renderWait / pollInterval);
+            let gotFrame = false;
+            for (let i = 0; i < maxPolls; i++) {
+                await viewer.waitForTimeout(pollInterval);
+                // Sample the KVM canvas center — if any pixel is non-black, we have a frame
+                const hasContent = await viewer.evaluate(() => {
+                    const canvas = document.querySelector('canvas#kvm') || document.querySelector('canvas');
+                    if (!canvas) return false;
+                    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                    if (!ctx) return false;
+                    const w = canvas.width, h = canvas.height;
+                    if (w === 0 || h === 0) return false;
+                    // Sample a 10x10 block from center
+                    const sx = Math.floor(w / 2) - 5, sy = Math.floor(h / 2) - 5;
+                    const data = ctx.getImageData(sx, sy, 10, 10).data;
+                    for (let j = 0; j < data.length; j += 4) {
+                        if (data[j] > 5 || data[j+1] > 5 || data[j+2] > 5) return true;
+                    }
+                    return false;
+                }).catch(() => false);
+                if (hasContent) {
+                    gotFrame = true;
+                    log(`Video frame detected after ${(i + 1) * pollInterval}ms`);
+                    // Brief extra settle time for full frame decode
+                    await viewer.waitForTimeout(300);
+                    break;
+                }
+            }
+            if (!gotFrame) {
+                log(`WARNING: No video frame detected after ${renderWait}ms — capturing anyway (screen may genuinely be black)`);
+            }
+        } else {
+            log('KVM did not connect, screenshotting anyway');
+        }
 
         // Screenshot the viewer page
         log('Screenshot...');

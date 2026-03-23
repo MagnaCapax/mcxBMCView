@@ -114,14 +114,19 @@ export BMC_PASS=yourpassword
 ### Capture Screenshot
 
 ```bash
-./getscreen <bmc-ip> [output.jpg]
+./getscreen [--wait MS] <bmc-ip> [output.jpg]
 # Returns path to JPEG on stdout. Exit 0 = success, 1 = failure.
 
 ./getscreen 10.0.0.100
 # → /tmp/bmc-10.0.0.100.jpg
 
+./getscreen --wait 30000 10.0.0.100  # wait up to 30s for video frame
 BMC_DEBUG=1 ./getscreen 10.0.0.100   # progress on stderr
 ```
+
+**About render timing:** ASPEED BMC video encoders can take surprisingly long to deliver the first frame — especially after boot, resolution changes (BIOS → OS → initramfs), or fresh KVM connections. The tool polls the KVM canvas for non-black pixel content every 200ms and captures as soon as a frame appears. If no frame arrives within `--wait` (default: 5000ms), it captures anyway with a warning on stderr.
+
+In production incidents, a black screenshot does **not** mean the screen is black. If you get a black capture, increase `--wait`. Waiting even 60 seconds is better than misdiagnosing a server as dead based on a false black screen.
 
 ### Send Keyboard Input
 

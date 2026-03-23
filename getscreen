@@ -1,12 +1,43 @@
 #!/usr/bin/env bash
 # Capture screenshot from AMI MegaRAC BMC HTML5 KVM
-# Usage: getscreen <bmc-ip> [output.jpg]
+# Usage: getscreen [--wait MS] <bmc-ip> [output.jpg]
 # Env: BMC_USER (required), BMC_PASS (required), BMC_DEBUG=1 (optional)
+#
+# NOTE: ASPEED BMC video encoders can take surprisingly long to deliver the
+# first frame after boot, resolution changes, or reconnection. The tool polls
+# the KVM canvas for non-black content before capturing. If your screenshot
+# comes back black, try increasing --wait (default: 5000ms). In production
+# incidents, waiting even 60s is better than getting a false black screen.
 set -euo pipefail
 
+# Parse --wait argument
+RENDER_WAIT=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --wait)
+            RENDER_WAIT="$2"
+            shift 2
+            ;;
+        --wait=*)
+            RENDER_WAIT="${1#--wait=}"
+            shift
+            ;;
+        -*)
+            echo "Unknown option: $1" >&2
+            echo "Usage: getscreen [--wait MS] <bmc-ip> [output.jpg]" >&2
+            exit 1
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
 if [[ $# -lt 1 ]]; then
-    echo "Usage: getscreen <bmc-ip> [output.jpg]" >&2
+    echo "Usage: getscreen [--wait MS] <bmc-ip> [output.jpg]" >&2
+    echo "  --wait MS    Max time to wait for video frame (default: 5000)" >&2
     echo "  Env: BMC_USER, BMC_PASS (required)" >&2
+    echo "  Env: BMC_RENDER_WAIT (same as --wait), BMC_DEBUG=1" >&2
     exit 1
 fi
 
@@ -16,6 +47,11 @@ OUTPUT="${2:-/tmp/bmc-${HOST}.jpg}"
 if [[ -z "${BMC_USER:-}" || -z "${BMC_PASS:-}" ]]; then
     echo "ERROR: BMC_USER and BMC_PASS environment variables must be set" >&2
     exit 1
+fi
+
+# --wait flag overrides env var
+if [[ -n "$RENDER_WAIT" ]]; then
+    export BMC_RENDER_WAIT="$RENDER_WAIT"
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
