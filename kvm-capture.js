@@ -97,7 +97,9 @@ if (process.getuid && process.getuid() === 0) chromiumArgs.push('--no-sandbox');
             let gotFrame = false;
             for (let i = 0; i < maxPolls; i++) {
                 await viewer.waitForTimeout(pollInterval);
-                // Sample the KVM canvas center — if any pixel is non-black, we have a frame
+                // Sample multiple regions across the KVM canvas for non-black pixels.
+                // Console text may appear anywhere (top, center, bottom) — a single
+                // center sample misses e.g. terminal output only in the top half.
                 const hasContent = await viewer.evaluate(() => {
                     const canvas = document.querySelector('canvas#kvm') || document.querySelector('canvas');
                     if (!canvas) return false;
@@ -105,11 +107,18 @@ if (process.getuid && process.getuid() === 0) chromiumArgs.push('--no-sandbox');
                     if (!ctx) return false;
                     const w = canvas.width, h = canvas.height;
                     if (w === 0 || h === 0) return false;
-                    // Sample a 10x10 block from center
-                    const sx = Math.floor(w / 2) - 5, sy = Math.floor(h / 2) - 5;
-                    const data = ctx.getImageData(sx, sy, 10, 10).data;
-                    for (let j = 0; j < data.length; j += 4) {
-                        if (data[j] > 5 || data[j+1] > 5 || data[j+2] > 5) return true;
+                    // Sample 5 horizontal strips: 10%, 30%, 50%, 70%, 90% height
+                    const strips = [0.1, 0.3, 0.5, 0.7, 0.9];
+                    for (const yPct of strips) {
+                        const sy = Math.floor(h * yPct);
+                        // Sample a horizontal strip: 80% of width centered
+                        const sx = Math.floor(w * 0.1);
+                        const sw = Math.floor(w * 0.8);
+                        const data = ctx.getImageData(sx, sy, sw, 1).data;
+                        // Check every 40th pixel across the strip (fast enough at 200ms intervals)
+                        for (let j = 0; j < data.length; j += 40 * 4) {
+                            if (data[j] > 5 || data[j+1] > 5 || data[j+2] > 5) return true;
+                        }
                     }
                     return false;
                 }).catch(() => false);
