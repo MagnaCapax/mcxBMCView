@@ -1,0 +1,158 @@
+#!/bin/bash
+# tools/bmc/power — IPMI chassis power wrapper with confirm-gate + audit logging.
+#
+# Usage:
+#   tools/bmc/power status   <bmc-ip>
+#   tools/bmc/power sensors  <bmc-ip>
+#   tools/bmc/power sel      <bmc-ip>
+#   tools/bmc/power on       <bmc-ip> --confirm
+#   tools/bmc/power off      <bmc-ip> --confirm
+#   tools/bmc/power cycle    <bmc-ip> --confirm
+#   tools/bmc/power reset    <bmc-ip> --confirm
+#
+# Read-only actions (status/sensors/sel) require NO confirm.
+# Destructive actions (on/off/cycle/reset) require --confirm AND log to
+# log/bmc-actions/YYYYMMDD.jsonl with operator-directed attribution.
+#
+# Defaults: BMC_USER=admin BMC_PASS=megalepo2 (fleet standard).
+# BMC IP must be in 10.148.0.0/16 — refuses arbitrary IPs to prevent typo-bombing.
+#
+# This tool does NOT bypass HG-46 ticket-runner gates. Those gates limit
+# autonomous use in customer-facing ticket sessions; this wrapper is for
+# operator-directed interactive recovery work.
+
+set -eu
+
+PROG="$(basename "$0")"
+BMC_USER="${BMC_USER:-admin}"
+BMC_PASS="${BMC_PASS:-megalepo2}"
+
+usage() {
+    cat <<'EOF'
+Usage: tools/bmc/power <action> <bmc-ip> [--confirm] [--reason "..."]
+
+Read-only actions (no --confirm needed):
+  status     Chassis power state + boot device override
+  sensors    SDR sensor dump (temps, voltages, fans)
+  sel        System Event Log (last 20 entries)
+
+Destructive actions (require --confirm AND log audit):
+  on         chassis power on
+  off        chassis power off
+  cycle      chassis power cycle (off → wait → on)
+  reset      chassis power reset (hard reset, no off)
+
+Options:
+  --confirm        Required for destructive actions. Without it, destructive
+                   commands print what would happen and exit 1.
+  --reason "..."   Optional one-line reason (logged for audit).
+
+Environment:
+  BMC_USER         BMC username (default: admin)
+  BMC_PASS         BMC password (default: megalepo2)
+
+Examples:
+  tools/bmc/power status 10.148.0.38
+  tools/bmc/power sensors 10.148.0.38
+  tools/bmc/power cycle 10.148.0.38 --confirm --reason "post-NVMe-swap recovery"
+EOF
+}
+
+if [ $# -lt 2 ]; then
+    usage
+    exit 1
+fi
+
+ACTION="$1"
+BMC_IP="$2"
+shift 2
+
+CONFIRM=0
+REASON=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --confirm) CONFIRM=1; shift ;;
+        --reason) REASON="${2:-}"; shift 2 ;;
+        --reason=*) REASON="${1#*=}"; shift ;;
+        -h|--help) usage; exit 0 ;;
+        *) echo "$PROG: unknown option: $1" >&2; usage; exit 1 ;;
+    esac
+done
+
+# Validate BMC IP — must be IPv4 in 10.148.0.0/16
+if ! echo "$BMC_IP" | grep -qE '^10\.148\.[0-9]{1,3}\.[0-9]{1,3}$'; then
+    echo "$PROG: BMC IP must be 10.148.x.y (PM management network). Got: $BMC_IP" >&2
+    echo "$PROG: For host-IP-to-BMC-IP mapping: 185.148.X.Y → 10.148.X.Y" >&2
+    exit 2
+fi
+
+# Reachability preflight (advisory, not blocking; useful when WG is up)
+BMC_REACHABLE="unknown"
+if ping -c 1 -W 1 "$BMC_IP" >/dev/null 2>&1; then
+    BMC_REACHABLE="yes"
+fi
+
+LOG_DIR="${SYSADMIN_ROOT:-/home/vainamoinen/sysadmin}/log/bmc-actions"
+mkdir -p "$LOG_DIR"
+LOG_FILE="$LOG_DIR/$(date -u +%Y%m%d).jsonl"
+TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+SESSION="${CLAUDE_SESSION_ID:-${SESSION_ID:-interactive-${USER:-unknown}}}"
+
+log_event() {
+    local phase="$1"; local result="$2"; local detail="${3:-}"
+    # Escape quotes in detail for JSON
+    local esc_detail; esc_detail=$(printf '%s' "$detail" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ')
+    local esc_reason; esc_reason=$(printf '%s' "$REASON" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\n' ' ')
+    printf '{"ts":"%s","session":"%s","action":"%s","bmc_ip":"%s","phase":"%s","result":"%s","bmc_reachable":"%s","reason":"%s","detail":"%s"}\n' \
+        "$TS" "$SESSION" "$ACTION" "$BMC_IP" "$phase" "$result" "$BMC_REACHABLE" "$esc_reason" "$esc_detail" >> "$LOG_FILE"
+}
+
+run_readonly() {
+    local cmd="$1"
+    log_event "execute" "started" "readonly $cmd"
+    if ! ipmitool -I lanplus -H "$BMC_IP" -U "$BMC_USER" -P "$BMC_PASS" $cmd 2>&1; then
+        local rc=$?
+        log_event "execute" "failed" "exit=$rc"
+        exit $rc
+    fi
+    log_event "execute" "ok" ""
+}
+
+run_destructive() {
+    local cmd="$1"
+    if [ "$CONFIRM" -ne 1 ]; then
+        echo "$PROG: '$ACTION' is destructive. Add --confirm to execute." >&2
+        echo "$PROG: Dry-run would call: ipmitool -I lanplus -H $BMC_IP -U $BMC_USER ... $cmd" >&2
+        log_event "preflight" "missing_confirm" "$cmd"
+        exit 3
+    fi
+    if [ "$BMC_REACHABLE" != "yes" ]; then
+        echo "$PROG: WARNING: BMC $BMC_IP not responding to ICMP. Proceeding anyway (may fail)." >&2
+    fi
+    log_event "execute" "started" "destructive $cmd reason=$REASON"
+    local out
+    if out=$(ipmitool -I lanplus -H "$BMC_IP" -U "$BMC_USER" -P "$BMC_PASS" $cmd 2>&1); then
+        printf '%s\n' "$out"
+        log_event "execute" "ok" "$out"
+    else
+        local rc=$?
+        printf '%s\n' "$out" >&2
+        log_event "execute" "failed" "exit=$rc $out"
+        exit $rc
+    fi
+}
+
+case "$ACTION" in
+    status)  run_readonly "chassis power status" ;;
+    sensors) run_readonly "sdr type Temperature"
+             echo "---"
+             run_readonly "sdr type Voltage"
+             echo "---"
+             run_readonly "sdr type Fan" ;;
+    sel)     run_readonly "sel elist" ;;
+    on)      run_destructive "chassis power on" ;;
+    off)     run_destructive "chassis power off" ;;
+    cycle)   run_destructive "chassis power cycle" ;;
+    reset)   run_destructive "chassis power reset" ;;
+    *)       echo "$PROG: unknown action: $ACTION" >&2; usage; exit 1 ;;
+esac

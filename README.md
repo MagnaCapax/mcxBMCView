@@ -14,8 +14,9 @@ mcxBMCView bridges that gap. It gives your automation **deterministic, scriptabl
 - **`getscreen`** — captures the server's physical display as a JPEG. Pipe it to your vision model. Exit code 0 = success, 1 = failure. Screenshot path on stdout.
 - **`sendkeys`** — types keyboard input into the server console. Login sequences, BIOS navigation, boot menu selections — anything a human would type.
 - **`flashbios`** — reflashes the BIOS via the BMC's SPI bus. Works even when the host CPU is completely dead — the ASPEED chip writes to the flash chip directly, independent of the host.
+- **`power`** — `ipmitool chassis power` wrapper with confirm-gate friction. Read-only ops (status/sensors/sel) require no confirmation; destructive ops (on/off/cycle/reset) require `--confirm`. Logs every invocation to a per-day JSONL audit file. Pure bash + ipmitool — no Playwright dependency.
 
-All tools authenticate, act, clean up, and exit. Fully stateless. One dependency: Playwright.
+All tools authenticate, act, clean up, and exit. Fully stateless. The Playwright-based tools (`getscreen`, `sendkeys`, `flashbios`) depend on Node.js + Playwright; `power` depends only on `ipmitool`.
 
 ## Agent Integration
 
@@ -199,6 +200,8 @@ ipmitool -I lanplus -H <bmc-ip> -U <user> -P <pass> mc reset cold
 - **AMI MegaRAC only** — other vendors have different interfaces entirely
 - **Self-signed TLS** — certificate validation is disabled (BMCs use self-signed certs)
 - **No server-side screenshot API** — this firmware version has no REST endpoint for live capture
+- **First-character drop** — the first character sent right after a KVM connect is sometimes lost by the BMC before the KVM canvas has focus. Prefix commands with a harmless `{Enter}` or a throwaway character then `{BackSpace}` to absorb the drop. Pattern that works: `"{Enter}{Delay:500}<real command>{Enter}"` or `"xxx{BackSpace}{BackSpace}{BackSpace}<real command>{Enter}"`.
+- **Keyboard layout follows the host** — sendkeys delivers Playwright key events; the guest OS interprets them through its active keymap. If the host is set to a non-US layout (e.g. Finnish, German), characters like `/` `-` `|` `@` can map to different printable characters. Verify with a test send (`echo test` then screenshot) before sending critical commands. Finnish keymap: `/` is `{Shift+7}`, `|` is `{AltGraph+<}`, `@` is `{AltGraph+2}`. When scripting a recovery, prefer ASCII-only commands or use `$HOME`/shell variables to avoid path separators in sendkeys strings.
 
 ## Attribution
 
