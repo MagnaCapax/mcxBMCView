@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# Deterministic BIOS entry via BMC KVM
+# Maintains a persistent KVM session, polls canvas rapidly, sends BIOS keys on POST detection.
+#
+# Usage: enterbios [--reboot] [--timeout SECS] [--journal DIR] <bmc-ip>
+# Env: BMC_USER (required), BMC_PASS (required), BMC_DEBUG=1 (optional)
+#
+# How it works:
+#   1. Establishes persistent KVM session (one login, stays connected)
+#   2. Polls KVM canvas every ~1s for non-black content
+#   3. Black screen = still in POST RAM check or rebooting, wait
+#   4. Non-black content = POST active, immediately spam BIOS entry keys
+#   5. Reports success when BIOS UI likely reached, saves final screenshot
+#
+# Much faster than calling getscreen repeatedly (25s overhead per call).
+set -euo pipefail
+
+# Parse arguments
+REBOOT=false
+TIMEOUT=600
+JOURNAL_DIR=""
+HOST=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --reboot) REBOOT=true; shift ;;
+        --timeout) TIMEOUT="$2"; shift 2 ;;
+        --timeout=*) TIMEOUT="${1#--timeout=}"; shift ;;
+        --journal) JOURNAL_DIR="$2"; shift 2 ;;
+        --journal=*) JOURNAL_DIR="${1#--journal=}"; shift ;;
+        -*) echo "Unknown option: $1" >&2; exit 1 ;;
+        *) HOST="$1"; shift ;;
+    esac
+done
+
+if [[ -z "$HOST" ]]; then
+    echo "Usage: enterbios [--reboot] [--timeout SECS] [--journal DIR] <bmc-ip>" >&2
+    echo "  --reboot     Send IPMI power cycle before starting" >&2
+    echo "  --timeout    Max seconds to wait (default: 600)" >&2
+    echo "  --journal    Save timestamped screenshots to DIR" >&2
+    echo "  Env: BMC_USER, BMC_PASS (required)" >&2
+    exit 1
+fi
+
+if [[ -z "${BMC_USER:-}" || -z "${BMC_PASS:-}" ]]; then
+    echo "ERROR: BMC_USER and BMC_PASS environment variables must be set" >&2
+    exit 1
+fi
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Phase 0: Reboot if requested
+if $REBOOT; then
+    echo "[$(date '+%H:%M:%S')] Sending IPMI power cycle..." >&2
+    ipmitool -I lanplus -H "$HOST" -U "$BMC_USER" -P "$BMC_PASS" chassis power cycle 2>/dev/null || true
+    echo "[$(date '+%H:%M:%S')] Waiting 5s for power cycle to initiate..." >&2
+    sleep 5
+fi
+
+# Run the persistent KVM session node script
+exec node "${SCRIPT_DIR}/kvm-enterbios.js" "$HOST" "$BMC_USER" "$BMC_PASS" "$TIMEOUT" "${JOURNAL_DIR:-}"
