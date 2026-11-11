@@ -32,7 +32,9 @@ $scratch = sys_get_temp_dir() . '/power-test-' . bin2hex(random_bytes(4));
 mkdir("$scratch/bin", 0700, true);
 file_put_contents("$scratch/bin/ipmitool", "#!/bin/sh\necho \"\$*\" >> \"$scratch/calls\"\n"
     . "[ -n \"\$IPMI_PASSWORD\" ] && echo pw-in-env >> \"$scratch/calls\"\n"
-    . "case \"\$*\" in *'-U root '*'mc info'*) exit 0;; *'mc info'*) exit 1;; esac\necho 'Chassis Power is on'\nexit 0\n");
+    . "case \"\$*\" in *'-U root '*'mc info'*) exit 0;; *'mc info'*) exit 1;; esac\n"
+    . "if [ -s \"$scratch/fail\" ] && echo \"\$*\" | grep -qE \"\$(cat \"$scratch/fail\")\"; then echo 'stub: Unable to establish IPMI session' >&2; exit 1; fi\n"
+    . "echo \"Chassis Power is on (\$*)\"\nexit 0\n");
 chmod("$scratch/bin/ipmitool", 0700);
 
 function runPower(array $args, array $env, string $scratch): array
@@ -84,6 +86,33 @@ check('no host known: warns and proceeds as before', $rc === 0 && strpos($out, '
 [$rc, $out, $calls] = runPower(['status', '10.0.0.5'], ['BMC_PASS' => $pw, 'BMC_USER' => 'admin'], $scratch);
 check('pinned BMC_USER is the only user tried', $rc === 2 && strpos($calls, '-U root') === false, "rc=$rc $calls");
 
+// A read that fails after the BMC authenticated must exit non-zero (a gate that runs `power status` relies
+// on it), every command of a multi-command read is checked, and the audit log keeps the real exit code.
+@unlink("$scratch/log/bmc-actions/" . gmdate('Ymd') . '.jsonl');
+foreach ([['status', 'chassis power status'], ['sensors', 'sdr type Fan'], ['sel', 'sel elist']] as [$action, $failing]) {
+    file_put_contents("$scratch/fail", $failing);
+    [$rc, $out] = runPower([$action, '10.0.0.5'], ['BMC_PASS' => $pw], $scratch);
+    check("$action: a read failing after authentication exits non-zero", $rc !== 0 && strpos($out, 'Unable to establish') !== false, "rc=$rc $out");
+}
+file_put_contents("$scratch/fail", 'sdr type Fan');
+[$rc, $out] = runPower(['sensors', '10.0.0.5'], ['BMC_PASS' => $pw], $scratch);
+check('sensors: output of the reads before the failure is kept', $rc !== 0 && strpos($out, 'sdr type Voltage') !== false, $out);
+file_put_contents("$scratch/fail", 'chassis power cycle');
+[$rc] = runPower(['cycle', '10.0.0.5', '--confirm', '--host=127.0.0.1:1'], ['BMC_PASS' => $pw], $scratch);
+check('a failed destructive action exits non-zero', $rc !== 0);
+unlink("$scratch/fail");
+$rows = array_map(function ($l) { return json_decode($l, true); }, array_filter(explode("\n", (string) @file_get_contents("$scratch/log/bmc-actions/" . gmdate('Ymd') . '.jsonl'))));
+$failed = array_values(array_filter($rows, function ($r) { return ($r['result'] ?? '') === 'failed'; }));
+check('audit log: one failed row per failure, each with its real exit code', count($failed) === 5
+    && count(array_filter($failed, function ($r) { return strpos($r['detail'], 'exit=0') === 0; })) === 0, json_encode($failed));
+
+// `on` and `soft` never probe the host: they cannot kill a running OS.
+$sshd2 = proc_open([PHP_BINARY, "$scratch/sshd.php"], [0 => ['file', '/dev/null', 'r'], 1 => ['pipe', 'w'], 2 => ['file', '/dev/null', 'w']], $sp2);
+$addr2 = trim((string) fgets($sp2[1]));
+[$rc, $out, $calls] = runPower(['on', '10.0.0.5', '--confirm', "--host=$addr2"], ['BMC_PASS' => $pw], $scratch);
+check('on is not refused on a running host', $rc === 0 && strpos($calls, 'chassis power on') !== false, "rc=$rc $out");
+proc_terminate($sshd2);
+proc_close($sshd2);
 exec('rm -rf -- ' . escapeshellarg($scratch));
 echo "$count checks, $fails failed\n";
 exit($fails === 0 ? 0 : 1);
