@@ -25,8 +25,17 @@ final class BmcEnv
         $list = preg_split('/\s+/', trim($candidates !== '' ? $candidates : 'admin root'), -1, PREG_SPLIT_NO_EMPTY);
         return $list ?: ['admin'];
     }
+    /**
+     * BMC_PASS, then BMC_PASS_PREVIOUS when it is set and different. The previous password is for the time a
+     * password change is rolled out BMC by BMC: a BMC not yet changed still logs in, and the caller says so.
+     */
+    public static function passCandidates(string $pass, string $previous): array
+    {
+        return $previous !== '' && $previous !== $pass ? [$pass, $previous] : [$pass];
+    }
+
     /** The keys a defaults file may set; lib/defaults.sh reads the same list. */
-    const DEFAULT_KEYS = ['BMC_USER', 'BMC_PASS', 'BMC_USER_CANDIDATES', 'BMC_LOG_DIR', 'BMC_ADDRESS_PREFIX',
+    const DEFAULT_KEYS = ['BMC_USER', 'BMC_PASS', 'BMC_PASS_PREVIOUS', 'BMC_USER_CANDIDATES', 'BMC_LOG_DIR', 'BMC_ADDRESS_PREFIX',
         'BMC_HOST_PREFIX_MAP', 'BMC_SESSION_VAR', 'NODE_PATH', 'IDRAC6_JAVA'];
 
     /**

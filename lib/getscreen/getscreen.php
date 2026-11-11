@@ -12,7 +12,7 @@ require __DIR__ . '/transport.php';
 
 umask(0077);
 $usage = "Usage: getscreen [--wait MS] <bmc-host> [output.jpg]\n"
-    . "  Env: BMC_PASS (required), BMC_USER or BMC_USER_CANDIDATES, BMC_RENDER_WAIT, IDRAC6_JAVA, BMC_DEBUG=1\n";
+    . "  Env: BMC_PASS (required), BMC_PASS_PREVIOUS, BMC_USER or BMC_USER_CANDIDATES, BMC_RENDER_WAIT, IDRAC6_JAVA, BMC_DEBUG=1\n";
 $args = array_slice($argv, 1);
 $wait = 0;
 while ($args !== [] && strncmp($args[0], '--', 2) === 0) {
@@ -45,8 +45,16 @@ $out = (string) ($args[1] ?? sys_get_temp_dir() . "/bmc-$host.jpg");
 $capture = new ConsoleCapture('getscreenHttp', 'getscreenRun', static function (int $ms): void {
     usleep($ms * 1000);
 }, dirname(__DIR__, 2));
-[$ok, $detail] = $capture->capture($host, $out, $wait,
-    BmcEnv::userCandidates((string) getenv('BMC_USER'), (string) getenv('BMC_USER_CANDIDATES')), (string) getenv('BMC_PASS'), getenv());
+$users = BmcEnv::userCandidates((string) getenv('BMC_USER'), (string) getenv('BMC_USER_CANDIDATES'));
+foreach (BmcEnv::passCandidates((string) getenv('BMC_PASS'), (string) getenv('BMC_PASS_PREVIOUS')) as $i => $pass) {
+    [$ok, $detail] = $capture->capture($host, $out, $wait, $users, $pass, getenv());
+    if ($ok) {
+        if ($i > 0) {
+            fwrite(STDERR, "getscreen: WARNING: $host accepted BMC_PASS_PREVIOUS, not BMC_PASS: its password has not been changed yet\n");
+        }
+        break;
+    }
+}
 if (!$ok) {
     $fail($detail);
 }

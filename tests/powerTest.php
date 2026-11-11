@@ -32,6 +32,7 @@ $scratch = sys_get_temp_dir() . '/power-test-' . bin2hex(random_bytes(4));
 mkdir("$scratch/bin", 0700, true);
 file_put_contents("$scratch/bin/ipmitool", "#!/bin/sh\necho \"\$*\" >> \"$scratch/calls\"\n"
     . "[ -n \"\$IPMI_PASSWORD\" ] && echo pw-in-env >> \"$scratch/calls\"\n"
+    . "if [ -s \"$scratch/goodpw\" ] && [ \"\$IPMI_PASSWORD\" != \"\$(cat \"$scratch/goodpw\")\" ]; then echo badpw >> \"$scratch/calls\"; exit 1; fi\n"
     . "case \"\$*\" in *'-U root '*'mc info'*) exit 0;; *'mc info'*) exit 1;; esac\n"
     . "if [ -s \"$scratch/fail\" ] && echo \"\$*\" | grep -qE \"\$(cat \"$scratch/fail\")\"; then echo 'stub: Unable to establish IPMI session' >&2; exit 1; fi\n"
     . "echo \"Chassis Power is on (\$*)\"\nexit 0\n");
@@ -120,6 +121,29 @@ $addr2 = trim((string) fgets($sp2[1]));
 check('on is not refused on a running host', $rc === 0 && strpos($calls, 'chassis power on') !== false, "rc=$rc $out");
 proc_terminate($sshd2);
 proc_close($sshd2);
+
+// BMC_PASS_PREVIOUS: during a password change rolled out BMC by BMC, a BMC not yet changed still logs in, with a
+// warning and an audit row; the current password is always tried first; no password reaches the log or argv.
+@unlink("$scratch/fail");
+$old = 'old-' . bin2hex(random_bytes(4));
+file_put_contents("$scratch/goodpw", $old);
+@unlink("$scratch/log/bmc-actions/" . gmdate('Ymd') . '.jsonl');
+[$rc, $out, $calls] = runPower(['status', '10.0.0.5'], ['BMC_PASS' => $pw, 'BMC_PASS_PREVIOUS' => $old], $scratch);
+check('previous password logs in when the new one is refused', $rc === 0 && strpos($out, 'accepted BMC_PASS_PREVIOUS') !== false
+    && strpos($calls, 'chassis power status') !== false, "rc=$rc $out");
+$alog = (string) @file_get_contents("$scratch/log/bmc-actions/" . gmdate('Ymd') . '.jsonl');
+check('the audit log records the previous-password login', strpos($alog, '"previous_password"') !== false, $alog);
+check('no password in the audit log or the arguments', strpos($alog, $old) === false && strpos($alog, $pw) === false
+    && strpos($calls, $old) === false && strpos($calls, $pw) === false);
+[$rc, $out] = runPower(['status', '10.0.0.5'], ['BMC_PASS' => $pw], $scratch);
+check('without BMC_PASS_PREVIOUS a BMC on the old password is refused', $rc === 2 && strpos($out, 'BMC_PASS_PREVIOUS') === false, "rc=$rc $out");
+[$rc, $out] = runPower(['status', '10.0.0.5'], ['BMC_PASS' => 'x1', 'BMC_PASS_PREVIOUS' => 'y1'], $scratch);
+check('both refused: exit 2 naming both', $rc === 2 && strpos($out, 'with BMC_PASS and BMC_PASS_PREVIOUS') !== false, "rc=$rc $out");
+file_put_contents("$scratch/goodpw", $pw);
+[$rc, $out, $calls] = runPower(['status', '10.0.0.5'], ['BMC_PASS' => $pw, 'BMC_PASS_PREVIOUS' => $old], $scratch);
+check('the current password is tried first and no warning when it works', $rc === 0 && strpos($out, 'WARNING') === false
+    && strpos($calls, 'badpw') === false, "rc=$rc $out $calls");
+@unlink("$scratch/goodpw");
 exec('rm -rf -- ' . escapeshellarg($scratch));
 echo "$count checks, $fails failed\n";
 exit($fails === 0 ? 0 : 1);

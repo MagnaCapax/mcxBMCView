@@ -43,6 +43,7 @@ Options:
 
 Environment (unset values can come from the defaults file, see README):
   BMC_PASS              BMC password (required, no default)
+  BMC_PASS_PREVIOUS     tried after BMC_PASS while a password change is rolled out; a warning says when it was used
   BMC_USER              BMC user; when unset, BMC_USER_CANDIDATES (default "admin root") are tried in order
   BMC_LOG_DIR           audit log directory (default ~/.local/state/mcxbmcview); file bmc-actions/YYYYMMDD.jsonl
   BMC_ADDRESS_PREFIX    when set, the BMC address must start with it (guards against typing a wrong address)
@@ -122,10 +123,10 @@ TXT;
     }
 
     /** Run one ipmitool command; the password goes in the environment (-E), never on the command line. */
-    public static function ipmitool(string $bmc, string $user, string $iface, string $command): array
+    public static function ipmitool(string $bmc, string $user, string $iface, string $command, ?string $pass = null): array
     {
         $argv = array_merge(['ipmitool', '-I', $iface, '-H', $bmc, '-U', $user, '-E'], explode(' ', $command));
-        $env = ['PATH' => (string) getenv('PATH'), 'IPMI_PASSWORD' => (string) getenv('BMC_PASS')];
+        $env = ['PATH' => (string) getenv('PATH'), 'IPMI_PASSWORD' => $pass ?? (string) getenv('BMC_PASS')];
         $p = proc_open($argv, [0 => ['file', '/dev/null', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, null, $env);
         if (!is_resource($p)) {
             return [127, "ipmitool did not start\n"];
@@ -136,13 +137,18 @@ TXT;
         return [proc_close($p), $out];
     }
 
-    /** The first user and interface (lanplus, then lan for old BMCs) that pass a read-only `mc info`. */
-    public static function resolveAuth(string $bmc, array $users): ?array
+    /**
+     * The first password, user and interface (lanplus, then lan for old BMCs) that pass a read-only `mc info`:
+     * [user, iface, password]. Every user is tried with the first password before the next password.
+     */
+    public static function resolveAuth(string $bmc, array $users, ?array $passes = null): ?array
     {
-        foreach ($users as $user) {
-            foreach (['lanplus', 'lan'] as $iface) {
-                if (self::ipmitool($bmc, $user, $iface, 'mc info')[0] === 0) {
-                    return [$user, $iface];
+        foreach ($passes ?? [(string) getenv('BMC_PASS')] as $pass) {
+            foreach ($users as $user) {
+                foreach (['lanplus', 'lan'] as $iface) {
+                    if (self::ipmitool($bmc, $user, $iface, 'mc info', $pass)[0] === 0) {
+                        return [$user, $iface, $pass];
+                    }
                 }
             }
         }

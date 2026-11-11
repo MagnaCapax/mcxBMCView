@@ -61,13 +61,19 @@ if (in_array($opt['action'], PowerLib::DESTRUCTIVE, true)) {
     }
 }
 
-$auth = PowerLib::resolveAuth($opt['bmc'], $users);
+$passes = BmcEnv::passCandidates($env('BMC_PASS'), $env('BMC_PASS_PREVIOUS'));
+$auth = PowerLib::resolveAuth($opt['bmc'], $users, $passes);
 if ($auth === null) {
-    fwrite(STDERR, "power: no user authenticated to {$opt['bmc']} (tried " . implode(', ', $users) . " over lanplus and lan)\n");
+    fwrite(STDERR, "power: no user authenticated to {$opt['bmc']} (tried " . implode(', ', $users) . ' over lanplus and lan'
+        . (count($passes) > 1 ? ' with BMC_PASS and BMC_PASS_PREVIOUS' : '') . ")\n");
     $log->event('execute', 'auth_failed', $commands[0]);
     exit(2);
 }
-[$user, $iface] = $auth;
+[$user, $iface, $pass] = $auth;
+if ($pass !== $passes[0]) {
+    fwrite(STDERR, "power: WARNING: {$opt['bmc']} accepted BMC_PASS_PREVIOUS, not BMC_PASS: its password has not been changed yet\n");
+    $log->event('execute', 'previous_password', "user=$user");
+}
 if ($user !== $users[0] || $iface !== 'lanplus') {
     fwrite(STDERR, "power: authenticated as user=$user interface=$iface\n");
 }
@@ -76,7 +82,7 @@ foreach ($commands as $i => $command) {
         echo "---\n";
     }
     $log->event('execute', 'started', "$command user=$user iface=$iface");
-    [$rc, $out] = PowerLib::ipmitool($opt['bmc'], $user, $iface, $command);
+    [$rc, $out] = PowerLib::ipmitool($opt['bmc'], $user, $iface, $command, $pass);
     echo $out;
     if ($rc !== 0) {
         $log->event('execute', 'failed', "exit=$rc $out");

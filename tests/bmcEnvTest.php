@@ -64,6 +64,13 @@ symlink($file, "$scratch/link");
 $linked = ['HOME' => $scratch, 'BMC_DEFAULTS_FILE' => "$scratch/link"];
 check('a symlinked file is ignored', !isset(BmcEnv::withDefaults($linked)['BMC_PASS']));
 check('shell: a symlinked file is ignored', shellValue($root, $linked, 'BMC_PASS') === '');
+check('passCandidates: the previous password after the current one', BmcEnv::passCandidates('a', 'b') === ['a', 'b']);
+check('passCandidates: an unset or equal previous password is not tried twice',
+    BmcEnv::passCandidates('a', '') === ['a'] && BmcEnv::passCandidates('a', 'a') === ['a']);
+file_put_contents("$scratch/prev", "BMC_PASS=new1\nBMC_PASS_PREVIOUS=old1\n");
+chmod("$scratch/prev", 0600);
+check('the defaults file may set BMC_PASS_PREVIOUS', (BmcEnv::withDefaults(['BMC_DEFAULTS_FILE' => "$scratch/prev"])['BMC_PASS_PREVIOUS'] ?? '') === 'old1'
+    && shellValue($root, ['HOME' => $scratch, 'BMC_DEFAULTS_FILE' => "$scratch/prev"], 'BMC_PASS_PREVIOUS') === 'old1');
 check('a missing file changes nothing', BmcEnv::withDefaults(['BMC_DEFAULTS_FILE' => "$scratch/none"]) === ['BMC_DEFAULTS_FILE' => "$scratch/none"]);
 
 exec('rm -rf -- ' . escapeshellarg($scratch));

@@ -115,7 +115,9 @@ export BMC_PASS=yourpassword
 
 When `BMC_USER` is unset, `power` and `getscreen` try `BMC_USER_CANDIDATES` in order (default `admin root`: AMI boards use `admin`, many older boards `root`).
 
-**Defaults file.** Unset variables can come from `~/.config/mcxbmcview/defaults` (or the file named by `BMC_DEFAULTS_FILE`): one `KEY=VALUE` per line, for `BMC_USER`, `BMC_PASS`, `BMC_USER_CANDIDATES`, `BMC_LOG_DIR`, `BMC_ADDRESS_PREFIX`, `BMC_HOST_PREFIX_MAP`, `BMC_SESSION_VAR`, `NODE_PATH` and `IDRAC6_JAVA`. The environment always wins, nothing in the file is executed, and the file is ignored unless it is yours and not writable by group or others (`chmod 600`). `BMC_ADDRESS_PREFIX` makes every tool refuse an address that does not start with it, which keeps a typo from sending your password to the wrong machine.
+**Changing the password across many BMCs.** Set the new password as `BMC_PASS` and the old one as `BMC_PASS_PREVIOUS`. `power` and `getscreen` try `BMC_PASS` first, then `BMC_PASS_PREVIOUS`, and print a warning (and `power` writes an audit row) whenever a BMC still accepts only the old one. Unset `BMC_PASS_PREVIOUS` once every BMC is changed.
+
+**Defaults file.** Unset variables can come from `~/.config/mcxbmcview/defaults` (or the file named by `BMC_DEFAULTS_FILE`): one `KEY=VALUE` per line, for `BMC_USER`, `BMC_PASS`, `BMC_PASS_PREVIOUS`, `BMC_USER_CANDIDATES`, `BMC_LOG_DIR`, `BMC_ADDRESS_PREFIX`, `BMC_HOST_PREFIX_MAP`, `BMC_SESSION_VAR`, `NODE_PATH` and `IDRAC6_JAVA`. The environment always wins, nothing in the file is executed, and the file is ignored unless it is yours and not writable by group or others (`chmod 600`). `BMC_ADDRESS_PREFIX` makes every tool refuse an address that does not start with it, which keeps a typo from sending your password to the wrong machine.
 
 ### Capture Screenshot
 
