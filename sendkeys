@@ -10,6 +10,8 @@
 #   Mixed: sendkeys 10.0.0.1 "root{Enter}password{Enter}"
 #   Delay: sendkeys 10.0.0.1 "{Delay:2000}" (ms)
 set -euo pipefail
+. "$(dirname "$(readlink -f "$0")")/lib/defaults.sh"   # unset variables from the defaults file (README)
+mcxFirst="${BMC_USER_CANDIDATES:-}"; BMC_USER="${BMC_USER:-${mcxFirst%% *}}"   # first candidate when BMC_USER is unset
 
 if [[ $# -lt 2 ]]; then
     echo "Usage: sendkeys <bmc-ip> <keys>" >&2

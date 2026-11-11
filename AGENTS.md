@@ -15,7 +15,7 @@ KISS, DRY, YAGNI. Delete first: question the requirement, delete the part, simpl
 - **Language:** the browser layer (`*.js`) is Node.js with Playwright, the recorded exception in ADR-0001. Everything else follows the organisation rule: logic in PHP, shell only as thin glue (about 20 lines, no logic), no Python. Logic in an existing shell wrapper moves to PHP when that wrapper is changed beyond a small fix.
 - **Naming:** camelCase for new variables, functions and files, read from the broadest context to the most specific. Existing file names and command names stay.
 - **Interface:** command names, arguments, the result on stdout, diagnostics on stderr (`BMC_DEBUG=1`) and the exit codes are what other automation relies on. Keep them working.
-- **Credentials** come from the environment only (`BMC_USER`, `BMC_PASS`). No real or default password in code or docs.
+- **Credentials** come from the environment or the user's defaults file (`lib/defaults.sh`, ADR-0003), never from the code. No real or default password in code or docs.
 - **Destructive actions:** a new destructive action (power change, reboot) needs an explicit option and says what it does, as `power --confirm` and `enterbios --reboot` do.
 - **Sessions:** every browser tool deletes its BMC web session before it exits; the BMC allows only a few.
 - **ADRs:** a significant behaviour, interface, security or workflow change ships with an ADR in `docs/adr/` (template `0000-template.md`, one subject per ADR).

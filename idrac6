@@ -2,4 +2,6 @@
 # idrac6 — console screenshot and read-only checks for iDRAC6-era BMCs. The logic is lib/idrac6/idrac6.php.
 # Usage: idrac6 <bmc-host> auth-test|power-status|console-check|screenshot <out.png>
 # Env: BMC_USER, BMC_PASS (required); IDRAC6_JAVA (32-bit Java 8, screenshot only); BMC_DEBUG=1
-exec php "$(dirname "$(readlink -f "$0")")/lib/idrac6/idrac6.php" "$@"
+here="$(dirname "$(readlink -f "$0")")"
+. "$here/lib/defaults.sh"
+exec php "$here/lib/idrac6/idrac6.php" "$@"

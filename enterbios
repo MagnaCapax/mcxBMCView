@@ -14,6 +14,8 @@
 #
 # Much faster than calling getscreen repeatedly (25s overhead per call).
 set -euo pipefail
+. "$(dirname "$(readlink -f "$0")")/lib/defaults.sh"   # unset variables from the defaults file (README)
+mcxFirst="${BMC_USER_CANDIDATES:-}"; BMC_USER="${BMC_USER:-${mcxFirst%% *}}"   # first candidate when BMC_USER is unset
 
 # Parse arguments
 REBOOT=false

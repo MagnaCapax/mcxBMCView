@@ -14,7 +14,7 @@ mcxBMCView bridges that gap. It gives your automation **deterministic, scriptabl
 - **`getscreen`** — captures the server's physical display as a JPEG. Pipe it to your vision model. Exit code 0 = success, 1 = failure. Screenshot path on stdout.
 - **`sendkeys`** — types keyboard input into the server console. Login sequences, BIOS navigation, boot menu selections — anything a human would type.
 - **`flashbios`** — reflashes the BIOS via the BMC's SPI bus. Works even when the host CPU is completely dead — the ASPEED chip writes to the flash chip directly, independent of the host.
-- **`power`** — `ipmitool chassis power` wrapper with confirm-gate friction. Read-only ops (status/sensors/sel) require no confirmation; destructive ops (on/off/cycle/reset) require `--confirm`. Logs every invocation to a per-day JSONL audit file. Pure bash + ipmitool — no Playwright dependency.
+- **`power`** — `ipmitool chassis power` wrapper with confirm-gate friction. Read-only ops (status/sensors/sel) require no confirmation; destructive ops (on/off/cycle/reset) require `--confirm`. Logs every invocation to a per-day JSONL audit file. PHP + ipmitool — no Playwright dependency.
 - **`idrac6`** — the same for iDRAC6-era BMCs, whose web interface is TLS 1.0-only and whose console is a Java viewer: credential check, power state, and a console screenshot through the BMC's own viewer under Xvfb. See [iDRAC6-era BMCs](#idrac6-era-bmcs).
 
 All tools authenticate, act, clean up, and exit. Fully stateless. The Playwright-based tools (`getscreen`, `sendkeys`, `flashbios`) depend on Node.js + Playwright; `power` depends only on `ipmitool`.
@@ -106,18 +106,22 @@ libxkbcommon0 libpango-1.0-0 libcairo2 libasound2
 
 ## Usage
 
-Credentials via environment variables — no defaults, no hardcoding:
+Credentials come from environment variables — no built-in defaults, nothing hardcoded:
 
 ```bash
 export BMC_USER=admin
 export BMC_PASS=yourpassword
 ```
 
+When `BMC_USER` is unset, `power` and `getscreen` try `BMC_USER_CANDIDATES` in order (default `admin root`: AMI boards use `admin`, many older boards `root`).
+
+**Defaults file.** Unset variables can come from `~/.config/mcxbmcview/defaults` (or the file named by `BMC_DEFAULTS_FILE`): one `KEY=VALUE` per line, for `BMC_USER`, `BMC_PASS`, `BMC_USER_CANDIDATES`, `BMC_LOG_DIR`, `BMC_ADDRESS_PREFIX`, `BMC_HOST_PREFIX_MAP`, `NODE_PATH` and `IDRAC6_JAVA`. The environment always wins, nothing in the file is executed, and the file is ignored unless it is yours and not writable by group or others (`chmod 600`). `BMC_ADDRESS_PREFIX` makes every tool refuse an address that does not start with it, which keeps a typo from sending your password to the wrong machine.
+
 ### Capture Screenshot
 
 ```bash
 ./getscreen [--wait MS] <bmc-ip> [output.jpg]
-# Returns path to JPEG on stdout. Exit 0 = success, 1 = failure.
+# Returns path to JPEG on stdout. Exit 0 = success, 1 = failure (the reason on stderr).
 
 ./getscreen 10.0.0.100
 # → /tmp/bmc-10.0.0.100.jpg
@@ -129,6 +133,8 @@ BMC_DEBUG=1 ./getscreen 10.0.0.100   # progress on stderr
 **About render timing:** ASPEED BMC video encoders can take surprisingly long to deliver the first frame — especially after boot, resolution changes (BIOS → OS → initramfs), or fresh KVM connections. The tool polls the KVM canvas for non-black pixel content every 200ms and captures as soon as a frame appears. If no frame arrives within `--wait` (default: 5000ms), it captures anyway with a warning on stderr.
 
 In production incidents, a black screenshot does **not** mean the screen is black. If you get a black capture, increase `--wait`. Waiting even 60 seconds is better than misdiagnosing a server as dead based on a false black screen.
+
+**Which BMCs:** `getscreen` reads the BMC's web root first. A Supermicro ATEN BMC gets its read-only console preview (no browser needed; ImageMagick converts the image). An iDRAC6-era BMC (`Server: Mbedthis-Appweb`) goes to [`idrac6`](#idrac6-era-bmcs) when `IDRAC6_JAVA` is set. An old AMI board whose only console is the Java JViewer gets the HTML5 attempt and a failure that says so. Everything else uses the HTML5 KVM viewer.
 
 ### Send Keyboard Input
 
@@ -171,6 +177,17 @@ Key implementation details for anyone reading the source:
 - `shutdwon_host_to_flash` — the typo in the radio button ID is real, present in the BMC firmware
 - Typical 32MB ROM flash takes ~2 minutes
 
+### Power
+
+```bash
+./power status 10.0.0.100                     # also: sensors, sel
+./power cycle 10.0.0.100 --confirm --host 192.0.2.10 --reason "hung at boot"
+./power soft 10.0.0.100 --confirm             # ACPI power button: clean OS shutdown
+./power --help
+```
+
+Destructive actions need `--confirm` and go to a JSON Lines audit log (`BMC_LOG_DIR`, default `~/.local/state/mcxbmcview`). With `--host` (or `BMC_HOST_PREFIX_MAP`), `off`, `cycle` and `reset` first ask the server's sshd for a banner: if the OS answers, the action is refused (exit 4) so a running system is shut down over SSH instead; `--host-up-ok` with `--reason` overrides. The password reaches `ipmitool` through `IPMI_PASSWORD`, never its command line.
+
 ### iDRAC6-era BMCs
 
 `idrac6` covers Dell iDRAC6 and the Avocent-based boards that share its firmware. Their web interface speaks only SSLv3/TLS 1.0, and their console is a Java viewer that the BMC serves, so the Playwright tools cannot reach them ([ADR-0002](docs/adr/0002-idrac6-legacy-tls-transport-and-java-viewer.md)).
@@ -192,7 +209,7 @@ sudo dpkg --add-architecture i386 && sudo apt update
 sudo apt install -y xvfb x11-xkb-utils imagemagick unzip libx11-6:i386 libxext6:i386 libxrender1:i386 libxtst6:i386 libxi6:i386 libfreetype6:i386
 ```
 
-The tool does not download Java and runs the viewer the BMC serves, so run it on a machine where that is acceptable. The console is view-only: the headless viewer does not forward keystrokes. Use `power` for power actions.
+The tool does not download Java and runs the viewer the BMC serves: the jars come from the BMC over plain HTTP (`/software/`) and their signatures are not checked, so whoever can answer for that BMC address can run code there. Run it on a machine where that is acceptable, ideally one kept for this. The console token from viewer.jnlp is on the java command line, visible in `ps`, while the viewer runs. The console is view-only: the headless viewer does not forward keystrokes. Use `power` for power actions.
 
 ## How It Works
 

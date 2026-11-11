@@ -7,9 +7,12 @@
 
 const { chromium } = require('playwright');
 
-const [host, user, pass, output] = process.argv.slice(2);
+// The password may come from the environment (BMC_PASS) so it never shows in the process list;
+// pass an empty <pass> argument then. A non-empty argument still works for old callers.
+const [host, user, argPass, output] = process.argv.slice(2);
+const pass = process.env.BMC_PASS || argPass;
 if (!host || !user || !pass || !output) {
-    console.error('Usage: node kvm-capture.js <host> <user> <pass> <output.jpg>');
+    console.error('Usage: BMC_PASS=... node kvm-capture.js <host> <user> "" <output.jpg>  (or <pass> as the 3rd argument)');
     process.exit(1);
 }
 
@@ -51,11 +54,18 @@ if (process.getuid && process.getuid() === 0) chromiumArgs.push('--no-sandbox');
             }
         }
 
-        // Verify login succeeded
+        // Verify login succeeded. garc (CSRF token) ALONE is unreliable: AMI MegaRAC seeds a garc
+        // token on the login page itself, so it is present even when auth FAILED — which returned a
+        // login-page screenshot to callers as "success" (a byte-identical image came back for right,
+        // wrong and missing credentials alike, which hid a wrong user name). Require
+        // BOTH a CSRF token AND that the login form is no longer visible (we navigated past login).
         const garc = await page.evaluate(() => sessionStorage.getItem('garc'));
-        if (!garc) {
-            console.error('Login failed: no CSRF token in sessionStorage');
-            await page.screenshot({ path: output, type: 'jpeg', quality: 90 });
+        const loginVisible = await page.isVisible('#password').catch(() => false);
+        if (!garc || loginVisible) {
+            console.error('Login failed: ' + (!garc ? 'no CSRF token in sessionStorage' : 'still on login form (credentials rejected)'));
+            // Write the diagnostic shot to a DISTINCT path, never the requested output — otherwise a
+            // login-page image is mistaken for a captured console and the wrapper reports success.
+            await page.screenshot({ path: output + '.loginfail.jpg', type: 'jpeg', quality: 90 }).catch(() => {});
             process.exit(1);
         }
         log(`CSRF: ${garc.slice(0, 4)}...`);
