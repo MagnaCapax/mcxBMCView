@@ -15,6 +15,7 @@ mcxBMCView bridges that gap. It gives your automation **deterministic, scriptabl
 - **`sendkeys`** — types keyboard input into the server console. Login sequences, BIOS navigation, boot menu selections — anything a human would type.
 - **`flashbios`** — reflashes the BIOS via the BMC's SPI bus. Works even when the host CPU is completely dead — the ASPEED chip writes to the flash chip directly, independent of the host.
 - **`power`** — `ipmitool chassis power` wrapper with confirm-gate friction. Read-only ops (status/sensors/sel) require no confirmation; destructive ops (on/off/cycle/reset) require `--confirm`. Logs every invocation to a per-day JSONL audit file. Pure bash + ipmitool — no Playwright dependency.
+- **`idrac6`** — the same for iDRAC6-era BMCs, whose web interface is TLS 1.0-only and whose console is a Java viewer: credential check, power state, and a console screenshot through the BMC's own viewer under Xvfb. See [iDRAC6-era BMCs](#idrac6-era-bmcs).
 
 All tools authenticate, act, clean up, and exit. Fully stateless. The Playwright-based tools (`getscreen`, `sendkeys`, `flashbios`) depend on Node.js + Playwright; `power` depends only on `ipmitool`.
 
@@ -45,7 +46,7 @@ Tested on AMI MegaRAC BMCs with ASPEED video engine:
 | ASRock Rack (various) | 1.10, 1.24 | Works |
 | Gigabyte 1U12XL-EPYC | AMI MegaRAC | Expected to work (same firmware family) |
 
-Other BMC vendors (Supermicro, iDRAC, iLO) use entirely different web interfaces and are **not supported**. Supermicro boards use different login form selectors and some have TLS cipher incompatibilities with modern Chromium — this is not a trivial adaptation.
+Other BMC vendors (Supermicro, iLO, newer iDRAC) use entirely different web interfaces and are **not supported** by the HTML5 tools. Supermicro boards use different login form selectors and some have TLS cipher incompatibilities with modern Chromium — this is not a trivial adaptation. **iDRAC6-era BMCs** (Dell iDRAC6 and Avocent-based boards with the same firmware, web server `Mbedthis-Appweb`) have their own tool, [`idrac6`](#idrac6-era-bmcs).
 
 ## Install
 
@@ -169,6 +170,29 @@ Key implementation details for anyone reading the source:
 - Two confirmation dialogs are auto-accepted during the flash flow
 - `shutdwon_host_to_flash` — the typo in the radio button ID is real, present in the BMC firmware
 - Typical 32MB ROM flash takes ~2 minutes
+
+### iDRAC6-era BMCs
+
+`idrac6` covers Dell iDRAC6 and the Avocent-based boards that share its firmware. Their web interface speaks only SSLv3/TLS 1.0, and their console is a Java viewer that the BMC serves, so the Playwright tools cannot reach them ([ADR-0002](docs/adr/0002-idrac6-legacy-tls-transport-and-java-viewer.md)).
+
+```bash
+export BMC_USER=root BMC_PASS='...'
+./idrac6 10.0.0.120 auth-test        # ok = the credentials work
+./idrac6 10.0.0.120 power-status     # on | off
+./idrac6 10.0.0.120 console-check    # login, console tokens and viewer jars, without starting Java
+IDRAC6_JAVA=/opt/java8-i686/bin/java ./idrac6 10.0.0.120 screenshot /tmp/console.png
+```
+
+The web side uses the system `curl` with `lib/idrac6/openssl-legacy.cnf` (OpenSSL 3 keeps the old protocols, disabled by default). It needs only `php` and `curl`. Every run logs out, because these BMCs keep only a few web sessions.
+
+`screenshot` runs the BMC's own Avocent viewer headless. Its native library is 32-bit, so it needs a **32-bit Java 8** (for example an i686 build of Azul Zulu 8) named in `IDRAC6_JAVA`, plus the 32-bit X libraries:
+
+```bash
+sudo dpkg --add-architecture i386 && sudo apt update
+sudo apt install -y xvfb x11-xkb-utils imagemagick unzip libx11-6:i386 libxext6:i386 libxrender1:i386 libxtst6:i386 libxi6:i386 libfreetype6:i386
+```
+
+The tool does not download Java and runs the viewer the BMC serves, so run it on a machine where that is acceptable. The console is view-only: the headless viewer does not forward keystrokes. Use `power` for power actions.
 
 ## How It Works
 
