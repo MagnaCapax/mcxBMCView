@@ -83,6 +83,13 @@ check('host not greeting: cycle runs', $rc === 0 && strpos($calls, 'chassis powe
 check('host derived from BMC_HOST_PREFIX_MAP and probed', $rc === 0 && strpos($out, 'WARNING: no --host') === false, "rc=$rc $out");
 [$rc, $out] = runPower(['cycle', '10.0.0.5', '--confirm'], ['BMC_PASS' => $pw], $scratch);
 check('no host known: warns and proceeds as before', $rc === 0 && strpos($out, 'WARNING: no --host') !== false, "rc=$rc $out");
+@unlink("$scratch/log/bmc-actions/" . gmdate('Ymd') . '.jsonl');
+runPower(['status', '10.0.0.5'], ['BMC_PASS' => $pw, 'BMC_SESSION_VAR' => 'MY_RUN_ID', 'MY_RUN_ID' => 'run-42', 'SESSION_ID' => 'other'], $scratch);
+runPower(['status', '10.0.0.5'], ['BMC_PASS' => $pw, 'SESSION_ID' => 'sess-7'], $scratch);
+runPower(['status', '10.0.0.5'], ['BMC_PASS' => $pw, 'BMC_SESSION_VAR' => 'bad;name', 'USER' => 'ann'], $scratch);
+$sessions = array_values(array_unique(array_map(function ($l) { return json_decode($l, true)['session']; },
+    array_filter(explode("\n", (string) @file_get_contents("$scratch/log/bmc-actions/" . gmdate('Ymd') . '.jsonl'))))));
+check('audit session: BMC_SESSION_VAR first, then SESSION_ID, then interactive-$USER', $sessions === ['run-42', 'sess-7', 'interactive-ann'], json_encode($sessions));
 [$rc, $out, $calls] = runPower(['status', '10.0.0.5'], ['BMC_PASS' => $pw, 'BMC_USER' => 'admin'], $scratch);
 check('pinned BMC_USER is the only user tried', $rc === 2 && strpos($calls, '-U root') === false, "rc=$rc $calls");
 

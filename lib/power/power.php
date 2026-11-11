@@ -29,8 +29,10 @@ if ($env('BMC_PASS') === '') {
     exit(2);
 }
 
+$session = preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $env('BMC_SESSION_VAR')) === 1 ? $env($env('BMC_SESSION_VAR')) : '';
+$session = $session !== '' ? $session : $env('SESSION_ID');
 $log = new PowerLog($env('BMC_LOG_DIR') !== '' ? $env('BMC_LOG_DIR') : $env('HOME') . '/.local/state/mcxbmcview',
-    $env('SESSION_ID') !== '' ? $env('SESSION_ID') : 'interactive-' . ($env('USER') !== '' ? $env('USER') : 'unknown'),
+    $session !== '' ? $session : 'interactive-' . ($env('USER') !== '' ? $env('USER') : 'unknown'),
     $opt['action'], $opt['bmc'], $opt['reason'], PowerLib::pingable($opt['bmc']) ? 'yes' : 'unknown');
 $commands = PowerLib::COMMANDS[$opt['action']];
 $users = BmcEnv::userCandidates($env('BMC_USER'), $env('BMC_USER_CANDIDATES'));

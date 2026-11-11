@@ -115,7 +115,7 @@ export BMC_PASS=yourpassword
 
 When `BMC_USER` is unset, `power` and `getscreen` try `BMC_USER_CANDIDATES` in order (default `admin root`: AMI boards use `admin`, many older boards `root`).
 
-**Defaults file.** Unset variables can come from `~/.config/mcxbmcview/defaults` (or the file named by `BMC_DEFAULTS_FILE`): one `KEY=VALUE` per line, for `BMC_USER`, `BMC_PASS`, `BMC_USER_CANDIDATES`, `BMC_LOG_DIR`, `BMC_ADDRESS_PREFIX`, `BMC_HOST_PREFIX_MAP`, `NODE_PATH` and `IDRAC6_JAVA`. The environment always wins, nothing in the file is executed, and the file is ignored unless it is yours and not writable by group or others (`chmod 600`). `BMC_ADDRESS_PREFIX` makes every tool refuse an address that does not start with it, which keeps a typo from sending your password to the wrong machine.
+**Defaults file.** Unset variables can come from `~/.config/mcxbmcview/defaults` (or the file named by `BMC_DEFAULTS_FILE`): one `KEY=VALUE` per line, for `BMC_USER`, `BMC_PASS`, `BMC_USER_CANDIDATES`, `BMC_LOG_DIR`, `BMC_ADDRESS_PREFIX`, `BMC_HOST_PREFIX_MAP`, `BMC_SESSION_VAR`, `NODE_PATH` and `IDRAC6_JAVA`. The environment always wins, nothing in the file is executed, and the file is ignored unless it is yours and not writable by group or others (`chmod 600`). `BMC_ADDRESS_PREFIX` makes every tool refuse an address that does not start with it, which keeps a typo from sending your password to the wrong machine.
 
 ### Capture Screenshot
 
@@ -186,7 +186,7 @@ Key implementation details for anyone reading the source:
 ./power --help
 ```
 
-Destructive actions need `--confirm` and go to a JSON Lines audit log (`BMC_LOG_DIR`, default `~/.local/state/mcxbmcview`). With `--host` (or `BMC_HOST_PREFIX_MAP`), `off`, `cycle` and `reset` first ask the server's sshd for a banner: if the OS answers, the action is refused (exit 4) so a running system is shut down over SSH instead; `--host-up-ok` with `--reason` overrides. The password reaches `ipmitool` through `IPMI_PASSWORD`, never its command line.
+Destructive actions need `--confirm` and go to a JSON Lines audit log (`BMC_LOG_DIR`, default `~/.local/state/mcxbmcview`). With `--host` (or `BMC_HOST_PREFIX_MAP`), `off`, `cycle` and `reset` first ask the server's sshd for a banner: if the OS answers, the action is refused (exit 4) so a running system is shut down over SSH instead; `--host-up-ok` with `--reason` overrides. Each log row carries a session: `SESSION_ID`, or the variable named by `BMC_SESSION_VAR` (for example your job runner's run id), else `interactive-$USER`. The password reaches `ipmitool` through `IPMI_PASSWORD`, never its command line.
 
 ### iDRAC6-era BMCs
 

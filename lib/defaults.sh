@@ -7,7 +7,7 @@ mcxDefaults="${BMC_DEFAULTS_FILE:-${XDG_CONFIG_HOME:-$HOME/.config}/mcxbmcview/d
 if [ -f "$mcxDefaults" ] && [ -O "$mcxDefaults" ] && [ -z "$(find "$mcxDefaults" -perm /022)" ]; then
     while IFS='=' read -r mcxKey mcxValue || [ -n "$mcxKey" ]; do
         case "$mcxKey" in
-            BMC_USER|BMC_PASS|BMC_USER_CANDIDATES|BMC_LOG_DIR|BMC_ADDRESS_PREFIX|BMC_HOST_PREFIX_MAP|NODE_PATH|IDRAC6_JAVA)
+            BMC_USER|BMC_PASS|BMC_USER_CANDIDATES|BMC_LOG_DIR|BMC_ADDRESS_PREFIX|BMC_HOST_PREFIX_MAP|BMC_SESSION_VAR|NODE_PATH|IDRAC6_JAVA)
                 if [ -z "${!mcxKey:-}" ]; then export "$mcxKey=${mcxValue%$'\r'}"; fi ;;
         esac
     done < "$mcxDefaults"

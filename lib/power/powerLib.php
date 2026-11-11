@@ -47,7 +47,8 @@ Environment (unset values can come from the defaults file, see README):
   BMC_LOG_DIR           audit log directory (default ~/.local/state/mcxbmcview); file bmc-actions/YYYYMMDD.jsonl
   BMC_ADDRESS_PREFIX    when set, the BMC address must start with it (guards against typing a wrong address)
   BMC_HOST_PREFIX_MAP   "from=to": derive --host from the BMC address by replacing that prefix
-  SESSION_ID            written to the audit log
+  SESSION_ID            written to the audit log as the session
+  BMC_SESSION_VAR       name of another variable to take the session from first (e.g. your job runner's run id)
 
 Examples:
   power status 10.0.0.100

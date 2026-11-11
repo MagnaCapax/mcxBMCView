@@ -27,7 +27,7 @@ final class BmcEnv
     }
     /** The keys a defaults file may set; lib/defaults.sh reads the same list. */
     const DEFAULT_KEYS = ['BMC_USER', 'BMC_PASS', 'BMC_USER_CANDIDATES', 'BMC_LOG_DIR', 'BMC_ADDRESS_PREFIX',
-        'BMC_HOST_PREFIX_MAP', 'NODE_PATH', 'IDRAC6_JAVA'];
+        'BMC_HOST_PREFIX_MAP', 'BMC_SESSION_VAR', 'NODE_PATH', 'IDRAC6_JAVA'];
 
     /**
      * $env with its unset or empty keys filled from the user's defaults file, the same way lib/defaults.sh
