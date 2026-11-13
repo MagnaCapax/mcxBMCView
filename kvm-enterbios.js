@@ -2,15 +2,19 @@
 // Stays connected to the BMC KVM and polls canvas rapidly for POST detection.
 // On detecting non-black content, immediately sends BIOS entry keys.
 //
-// Usage: node kvm-enterbios.js <host> <user> <pass> <timeout_s> [journal_dir]
+// Usage: BMC_PASS=... node kvm-enterbios.js <host> <user> "" <timeout_s> [journal_dir]  (or <pass> as the 3rd argument)
 
 const { chromium } = require('playwright');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 
-const [host, user, pass, timeoutStr, journalDir] = process.argv.slice(2);
+// The password comes from the environment (BMC_PASS) so it never shows in the process list; the third
+// argument stays for old callers that pass it directly (pass an empty string otherwise).
+const [host, user, argPass, timeoutStr, journalDir] = process.argv.slice(2);
+const pass = process.env.BMC_PASS || argPass;
 if (!host || !user || !pass) {
-    console.error('Usage: node kvm-enterbios.js <host> <user> <pass> <timeout_s> [journal_dir]');
+    console.error('Usage: BMC_PASS=... node kvm-enterbios.js <host> <user> "" <timeout_s> [journal_dir]  (or <pass> as the 3rd argument)');
     process.exit(1);
 }
 
@@ -23,7 +27,7 @@ const timeout = parseInt(timeoutStr || '600', 10) * 1000;
 const log = (m) => console.error(`[${new Date().toTimeString().slice(0, 8)}] ${m}`);
 
 if (journalDir && !fs.existsSync(journalDir)) {
-    fs.mkdirSync(journalDir, { recursive: true });
+    fs.mkdirSync(journalDir, { recursive: true, mode: 0o700 });
 }
 
 const chromiumArgs = ['--ignore-certificate-errors'];
@@ -119,6 +123,7 @@ const BIOS_KEYS = [
 
         // Helper: save screenshot
         let frameNum = 0;
+        let shotDir = null;
         const saveScreenshot = async (label) => {
             frameNum++;
             const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -126,7 +131,9 @@ const BIOS_KEYS = [
             if (journalDir) {
                 outPath = path.join(journalDir, `${ts}-frame${frameNum}-${label}.jpg`);
             } else {
-                outPath = `/tmp/enterbios-${host}-${frameNum}-${label}.jpg`;
+                // Console screenshots are private: a fresh 0700 directory, not a guessable name in a shared /tmp.
+                if (!shotDir) shotDir = fs.mkdtempSync(path.join(os.tmpdir(), 'enterbios-'));
+                outPath = path.join(shotDir, `${host}-${frameNum}-${label}.jpg`);
             }
             await viewer.screenshot({ path: outPath, type: 'jpeg', quality: 90 });
             return outPath;

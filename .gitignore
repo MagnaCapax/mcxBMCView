@@ -1,4 +1,49 @@
+# Dependencies (npm install)
 node_modules/
+
+# Local settings and secrets. The defaults file belongs outside the repo (~/.config/mcxbmcview/defaults);
+# these keep a copy that lands in the tree by accident from being committed.
+/defaults
+.env
+.env.*
+*.local
+*.secret
+*.key
+*.pem
+*.p12
+*.pfx
+.npmrc
+.netrc
+
+# What the tools write: console screenshots, journals, audit logs, captures (screenshots are the BMC console
+# and can show credentials typed there)
 /tmp/
 *.jpg
+*.jpeg
 *.png
+*.gif
+*.bmp
+*.webp
+*.jsonl
+*.log
+log/
+bmc-actions/
+journal/
+captures/
+*.pcap
+
+# BIOS images handed to flashbios
+*.rom
+*.bin
+*.fd
+*.cap
+*.img
+
+# Scratch, editor and OS files
+scratch/
+.scratch/
+*.swp
+*~
+.DS_Store
+.vscode/
+.idea/

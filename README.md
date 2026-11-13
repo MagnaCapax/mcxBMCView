@@ -232,7 +232,7 @@ API-based login with cookie injection does not work. The WebSocket handshake val
 The BMC allows ~4-5 concurrent web sessions. Each tool run creates and cleans up one. If sessions are exhausted (blank 6KB screenshots):
 
 ```bash
-ipmitool -I lanplus -H <bmc-ip> -U <user> -P <pass> mc reset cold
+IPMI_PASSWORD="$BMC_PASS" ipmitool -I lanplus -H <bmc-ip> -U <user> -E mc reset cold   # -E: password from the environment, not the process list
 # ~2 minutes for BMC to return
 ```
 

@@ -1,5 +1,5 @@
 // BIOS reflash via Playwright for AMI MegaRAC BMC
-// Usage: node bios-flash.js <host> <user> <pass> <rom-file>
+// Usage: BMC_PASS=... node bios-flash.js <host> <user> "" <rom-file>  (or <pass> as the 3rd argument)
 //
 // The BMC REST API does not support BIOS updates (error 1010 on fw <=1.80).
 // This script drives the browser-based SPA: login → navigate to BIOS Update →
@@ -13,10 +13,15 @@
 
 const { chromium } = require('playwright');
 const path = require('path');
+const fs = require('fs');
+const os = require('os');
 
-const [host, user, pass, romFile] = process.argv.slice(2);
+// The password comes from the environment (BMC_PASS) so it never shows in the process list; the third
+// argument stays for old callers that pass it directly (pass an empty string otherwise).
+const [host, user, argPass, romFile] = process.argv.slice(2);
+const pass = process.env.BMC_PASS || argPass;
 if (!host || !user || !pass || !romFile) {
-    console.error('Usage: node bios-flash.js <host> <user> <pass> <rom-file>');
+    console.error('Usage: BMC_PASS=... node bios-flash.js <host> <user> "" <rom-file>  (or <pass> as the 3rd argument)');
     process.exit(1);
 }
 if (!/^[\w.\-:]+$/.test(host)) {
@@ -50,10 +55,13 @@ if (process.getuid && process.getuid() === 0) chromiumArgs.push('--no-sandbox');
     const page = await context.newPage();
 
     let stepNum = 0;
+    let shotDir = null;
     const screenshot = async (label) => {
         if (!SCREENSHOTS) return;
         stepNum++;
-        const f = `/tmp/bios-flash-${host}-step${stepNum}-${label}.jpg`;
+        // Console screenshots are private: a fresh 0700 directory, not a guessable name in a shared /tmp.
+        if (!shotDir) shotDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bios-flash-'));
+        const f = path.join(shotDir, `${host}-step${stepNum}-${label}.jpg`);
         await page.screenshot({ path: f, type: 'jpeg', quality: 90, fullPage: true });
         log(`Screenshot: ${f}`);
     };

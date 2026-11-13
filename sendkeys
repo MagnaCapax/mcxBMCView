@@ -30,4 +30,4 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SUPPRESS="${BMC_DEBUG:+/dev/stderr}"
 
-node "${SCRIPT_DIR}/kvm-sendkeys.js" "$HOST" "$BMC_USER" "$BMC_PASS" "$KEYS" 2>"${SUPPRESS:-/dev/null}"
+node "${SCRIPT_DIR}/kvm-sendkeys.js" "$HOST" "$BMC_USER" "" "$KEYS" 2>"${SUPPRESS:-/dev/null}"

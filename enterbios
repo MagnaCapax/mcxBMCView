@@ -54,10 +54,13 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # Phase 0: Reboot if requested
 if $REBOOT; then
     echo "[$(date '+%H:%M:%S')] Sending IPMI power cycle..." >&2
-    ipmitool -I lanplus -H "$HOST" -U "$BMC_USER" -P "$BMC_PASS" chassis power cycle 2>/dev/null || true
+    # The power wrapper keeps the password out of the argument list, checks BMC_ADDRESS_PREFIX and writes the audit log.
+    # --host-up-ok: --reboot has always cycled a running host, the reason goes to the log.
+    "$SCRIPT_DIR/power" cycle "$HOST" --confirm --host-up-ok --reason "enterbios --reboot" >&2 \
+        || echo "[$(date '+%H:%M:%S')] power cycle failed; continuing to the KVM session" >&2
     echo "[$(date '+%H:%M:%S')] Waiting 5s for power cycle to initiate..." >&2
     sleep 5
 fi
 
 # Run the persistent KVM session node script
-exec node "${SCRIPT_DIR}/kvm-enterbios.js" "$HOST" "$BMC_USER" "$BMC_PASS" "$TIMEOUT" "${JOURNAL_DIR:-}"
+exec node "${SCRIPT_DIR}/kvm-enterbios.js" "$HOST" "$BMC_USER" "" "$TIMEOUT" "${JOURNAL_DIR:-}"

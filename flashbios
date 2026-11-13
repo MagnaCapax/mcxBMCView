@@ -41,4 +41,4 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 SUPPRESS="${BMC_DEBUG:+/dev/stderr}"
 
-node "${SCRIPT_DIR}/bios-flash.js" "$HOST" "$BMC_USER" "$BMC_PASS" "$ROM" 2>"${SUPPRESS:-/dev/null}"
+node "${SCRIPT_DIR}/bios-flash.js" "$HOST" "$BMC_USER" "" "$ROM" 2>"${SUPPRESS:-/dev/null}"

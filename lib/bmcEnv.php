@@ -59,7 +59,11 @@ final class BmcEnv
         if ($st === false || ($st['mode'] & 0170000) !== 0100000 || $st['uid'] !== $uid || ($st['mode'] & 0022) !== 0) {
             return $env;
         }
-        foreach (preg_split('/\r?\n/', (string) @file_get_contents($file)) as $line) {
+        $content = (string) @file_get_contents($file);
+        if ((($st['mode'] & 0044) !== 0) && preg_match('/^BMC_PASS/m', $content) === 1) {
+            fwrite(STDERR, "mcxbmcview: WARNING: $file holds a password and is readable by group or others; chmod 600 it\n");
+        }
+        foreach (preg_split('/\r?\n/', $content) as $line) {
             $parts = explode('=', $line, 2);
             if (count($parts) === 2 && in_array($parts[0], self::DEFAULT_KEYS, true) && (string) ($env[$parts[0]] ?? '') === '') {
                 $env[$parts[0]] = $parts[1];

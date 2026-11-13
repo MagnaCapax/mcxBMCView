@@ -1,5 +1,5 @@
 // Send keyboard input via BMC KVM WebSocket for AMI MegaRAC BMC
-// Usage: node kvm-sendkeys.js <host> <user> <pass> <keys>
+// Usage: BMC_PASS=... node kvm-sendkeys.js <host> <user> "" <keys>  (or <pass> as the 3rd argument)
 //
 // Key notation:
 //   Plain text typed as-is: "root"
@@ -10,9 +10,12 @@
 
 const { chromium } = require('playwright');
 
-const [host, user, pass, keys] = process.argv.slice(2);
+// The password comes from the environment (BMC_PASS) so it never shows in the process list; the third
+// argument stays for old callers that pass it directly (pass an empty string otherwise).
+const [host, user, argPass, keys] = process.argv.slice(2);
+const pass = process.env.BMC_PASS || argPass;
 if (!host || !user || !pass || !keys) {
-    console.error('Usage: node kvm-sendkeys.js <host> <user> <pass> <keys>');
+    console.error('Usage: BMC_PASS=... node kvm-sendkeys.js <host> <user> "" <keys>  (or <pass> as the 3rd argument)');
     console.error('  Keys: plain text + {Enter} {Tab} {Escape} {F1} {Ctrl+Alt+Delete} {Delay:ms}');
     process.exit(1);
 }
