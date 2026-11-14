@@ -87,6 +87,17 @@ final class LegacyWebSession
         return $this->loggedIn;
     }
 
+    /** Pure: the index of the first password that $try (fn(string $pass): bool) accepts, or null; it stops there. */
+    public static function firstAccepted(array $passes, callable $try): ?int
+    {
+        foreach ($passes as $i => $pass) {
+            if ($try($pass)) {
+                return $i;
+            }
+        }
+        return null;
+    }
+
     /** Log out (when logged in) and remove the cookie jar. Safe to call more than once. */
     public function close(): void
     {

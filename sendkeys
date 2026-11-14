@@ -28,6 +28,6 @@ if [[ -z "${BMC_USER:-}" || -z "${BMC_PASS:-}" ]]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SUPPRESS="${BMC_DEBUG:+/dev/stderr}"
 
-node "${SCRIPT_DIR}/kvm-sendkeys.js" "$HOST" "$BMC_USER" "" "$KEYS" 2>"${SUPPRESS:-/dev/null}"
+# kvmLogin.php tries BMC_PASS, then BMC_PASS_PREVIOUS; the script's stderr is shown only with BMC_DEBUG.
+exec php "${SCRIPT_DIR}/lib/kvmLogin.php" --quiet "${SCRIPT_DIR}/kvm-sendkeys.js" "$HOST" "$BMC_USER" "" "$KEYS"

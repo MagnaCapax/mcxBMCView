@@ -67,8 +67,12 @@ const BIOS_KEYS = [
             if (ready) { log(`Session ready after ${i + 1}s`); break; }
         }
 
+        // garc alone is not proof of a login: AMI MegaRAC seeds one on the login page itself (see kvm-capture.js),
+        // so the login form must also be gone. Exit 3 means only "the BMC rejected the login" (nothing was done yet):
+        // lib/kvmLogin.php then tries the next password.
         const garc = await page.evaluate(() => sessionStorage.getItem('garc'));
-        if (!garc) { log('Login failed'); process.exit(1); }
+        const loginVisible = await page.isVisible('#password').catch(() => false);
+        if (!garc || loginVisible) { log('Login failed'); process.exit(3); }
 
         // Open KVM viewer
         log('Opening KVM viewer...');

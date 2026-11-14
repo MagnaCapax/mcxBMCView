@@ -9,11 +9,13 @@
  *                                        tokens in viewer.jnlp, and the viewer jars the BMC serves
  *   idrac6 <bmc> screenshot <out.png>    capture the console; prints the path
  *
- * Credentials: BMC_USER and BMC_PASS from the environment, no defaults. screenshot also needs
+ * Credentials: BMC_USER and BMC_PASS from the environment, no defaults; BMC_PASS_PREVIOUS is tried after
+ * BMC_PASS while a password change is rolled out. screenshot also needs
  * IDRAC6_JAVA, the path of a 32-bit Java 8 `java` (see the README). BMC_DEBUG=1 prints progress.
  * Exit: 0 ok, 1 failed, 2 usage.
  */
 
+require __DIR__ . '/../bmcEnv.php';
 require __DIR__ . '/legacyWebSession.php';
 require __DIR__ . '/avocentViewer.php';
 require __DIR__ . '/consoleShot.php';
@@ -72,9 +74,16 @@ if ($user === '' || $pass === '') {
 
 $dir = idrac6WorkDir();
 $web = new LegacyWebSession($host, $dir);
-if (!$web->login($user, $pass)) {
+$passes = BmcEnv::passCandidates($pass, (string) getenv('BMC_PASS_PREVIOUS'));
+$accepted = LegacyWebSession::firstAccepted($passes, static function (string $p) use ($web, $user): bool {
+    return $web->login($user, $p);
+});
+if ($accepted === null) {
     fwrite(STDERR, "idrac6: login refused or no answer from $host (wrong credentials, all web sessions in use, or not an iDRAC6-era BMC)\n");
     exit(1);
+}
+if ($accepted > 0) {
+    fwrite(STDERR, "idrac6: WARNING: $host accepted BMC_PASS_PREVIOUS, not BMC_PASS: its password has not been changed yet\n");
 }
 idrac6Debug('logged in');
 

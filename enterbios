@@ -62,5 +62,5 @@ if $REBOOT; then
     sleep 5
 fi
 
-# Run the persistent KVM session node script
-exec node "${SCRIPT_DIR}/kvm-enterbios.js" "$HOST" "$BMC_USER" "" "$TIMEOUT" "${JOURNAL_DIR:-}"
+# Run the persistent KVM session node script; kvmLogin.php tries BMC_PASS, then BMC_PASS_PREVIOUS
+exec php "${SCRIPT_DIR}/lib/kvmLogin.php" "${SCRIPT_DIR}/kvm-enterbios.js" "$HOST" "$BMC_USER" "" "$TIMEOUT" "${JOURNAL_DIR:-}"

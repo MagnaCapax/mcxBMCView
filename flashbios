@@ -39,6 +39,6 @@ if [[ ! -f "$ROM" ]]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-SUPPRESS="${BMC_DEBUG:+/dev/stderr}"
 
-node "${SCRIPT_DIR}/bios-flash.js" "$HOST" "$BMC_USER" "" "$ROM" 2>"${SUPPRESS:-/dev/null}"
+# kvmLogin.php tries BMC_PASS, then BMC_PASS_PREVIOUS; the script's stderr is shown only with BMC_DEBUG.
+exec php "${SCRIPT_DIR}/lib/kvmLogin.php" --quiet "${SCRIPT_DIR}/bios-flash.js" "$HOST" "$BMC_USER" "" "$ROM"
